@@ -24,7 +24,7 @@ has been performed. Review and merge the five PRs in dependency order.
 | #5: adapter compatibility and host lifecycle docs | PASS | ADAPTER_GUIDE.md and runnable examples/adapters.py |
 | Synthetic relevance, latency, memory/citation/leakage metrics | MEASURED | EVALUATION.md; no baseline/production quality claim |
 | Hosted CI for first four implementation branches | OBSERVED PASS | PRs #6–#9; all Python matrix jobs succeeded |
-| Hosted CI for final implementation branch | REQUIRED PR GATE | Final PR checks are authoritative; result reported in PR description |
+| Hosted CI for final implementation code | OBSERVED PASS | [Run 40150378260](https://github.com/hanqi-zhou/ei-context/actions/runs/40150378260), Python 3.11–3.13; code commit b92eab2 |
 | Real EI Core/Server integration | DEFERRED | Source unavailable; Protocol/shim contract only |
 | Production authentication, high-scale storage, exact model tokenizer | DEFERRED | Host responsibilities / future adapters; not v0.1 claims |
 | Public license, PyPI publishing, services/UI/agent runtime | EXCLUDED | Explicitly outside authorised scope |
@@ -38,6 +38,7 @@ has been performed. Review and merge the five PRs in dependency order.
 - `python -m build --no-isolation`: sdist and wheel built successfully.
 - `python examples/offline_resume.py`: OFFLINE CONTINUITY PASS.
 - `python examples/adapters.py`: SYNTHETIC ADAPTER PASS.
+- Built wheel installed with `pip install --no-deps --target` into a temporary location; import path checked and offline continuity demo run from outside the checkout: PASS.
 - `python scripts/evaluate.py`: measured output recorded in EVALUATION.md.
 - `python scripts/evaluate_memory.py`: measured output recorded in EVALUATION.md.
 

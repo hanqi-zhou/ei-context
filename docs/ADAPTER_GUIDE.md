@@ -15,7 +15,9 @@ Implement `ContextProvider.provider_id` and async
    then rely on EI Context to redact results.
 3. Translate hits to `Evidence` and immutable `SourceRef` snapshots. Source IDs are
    stable within a provider; globally unique Evidence IDs must not collide across
-   providers. Include accurate tenant, namespace, effective actor/team principals,
+   providers. Source allowlists match source_id strings: use globally unique,
+   provider-qualified source IDs in native adapters to avoid cross-provider ambiguity.
+   Include accurate tenant, namespace, effective actor/team principals,
    version, timestamps, source URI and provider-declared trust. Unknown version or
    validity is null; do not invent freshness or `system_verified` labels.
 4. Honour bounded limits, asyncio cancellation and timeout. Raise failures instead

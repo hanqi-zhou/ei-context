@@ -6,7 +6,8 @@
   only private actor ownership is recognised. Org publication is disabled in v0.1.
 - SQLite is a trusted local file, not an authentication server. Protect the file
   and backups with host filesystem permissions. No proprietary data in fixtures.
-- All timestamps are timezone-aware UTC. Clocks are injectable.
+- All timestamps are timezone-aware; stored memory clock timestamps are normalised
+  to UTC, while source snapshots may retain their explicit offset. Clocks are injectable.
 - Unknown source version/validity is explicit null, never proof of freshness.
 - Five dependent PRs are stacked in issue order; merge bottom-up and retarget the
   next PR to main. No license, package publication, service or deployment added.

@@ -2,6 +2,9 @@
 
 Version 0.1 | 2026-10-24 | Delivery mode: incremental PRs | Implementation by Worker
 
+Implementation completed 2026-10-25 in stacked PRs #6–#10; review/merge pending.
+See [release evidence](RELEASE_CHECKLIST.md), [evaluation](EVALUATION.md) and ADRs 0002–0005.
+
 ## Guiding principle
 
 Prove cross-session recovery and evidence-backed context assembly **without relying on EI Core, EI Server, production data, a model provider, or a hosted vector DB**. Build the smallest independently useful library first; preserve interfaces for later integration.
@@ -129,17 +132,17 @@ Each PR should include: scope summary, changed files, tests actually run and res
 
 ## Definition of Done (first usable release)
 
-- [ ] Independent pip-installable Python library, functioning offline.
-- [ ] No dependency on missing EI packages or external models.
-- [ ] Well-defined, versioned typed contracts.
-- [ ] Two generic providers + persistent scoped memory provider.
-- [ ] New-session continuity demo passes after process/engine recreation.
-- [ ] Source citations, scope, validity and ranking trace are visible.
-- [ ] Memory correction, supersession, invalidation, delete and export safety tested.
-- [ ] No agent loops/UI/dashboard/code-search duplication.
-- [ ] Full tests, type checks, lint and CI pass.
-- [ ] Synthetic fixture evaluation reports quality/latency; gaps honestly documented.
-- [ ] README documents usage and future EI Core/Server adapter boundaries.
+- [x] Independent pip-installable Python library, functioning offline.
+- [x] No dependency on missing EI packages or external models.
+- [x] Well-defined, versioned typed contracts.
+- [x] Two generic providers + persistent scoped memory provider.
+- [x] New-session continuity demo passes after process/engine recreation.
+- [x] Source citations, scope, validity and ranking trace are visible.
+- [x] Memory correction, supersession, invalidation, delete and export safety tested.
+- [x] No agent loops/UI/dashboard/code-search duplication.
+- [x] Full tests, type checks, lint and CI pass.
+- [x] Synthetic fixture evaluation reports quality/latency; gaps honestly documented.
+- [x] README documents usage and future EI Core/Server adapter boundaries.
 
 ## Known risks / mitigation
 
@@ -159,3 +162,4 @@ Each PR should include: scope summary, changed files, tests actually run and res
 2. EI Server calls `prepare` at run start, `refresh` on evidence changes, `distill` on observable outcomes; EI Server remains in charge of run state.
 3. EI Integration may show evidence/citations and memory history, without EI Context owning an interface.
 4. Do not refactor library concepts around implementation quirks until end-to-end scenarios establish need.
+
