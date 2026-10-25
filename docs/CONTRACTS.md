@@ -6,12 +6,22 @@
 
 ```python
 from ei_context import (
-    AccessScope, WorkstreamRef, ContextRequest, ContextBundle,
-    Evidence, SourceRef, MemoryRecord, MemoryCandidate,
-    ContextEngine, MemoryManager,
+    AccessScope,
+    WorkstreamRef,
+    ContextRequest,
+    ContextBundle,
+    Evidence,
+    SourceRef,
+    MemoryRecord,
+    MemoryCandidate,
+    ContextEngine,
+    MemoryManager,
 )
 from ei_context.protocols import (
-    ContextProvider, MemoryStore, TokenCounter, MemoryExtractor,
+    ContextProvider,
+    MemoryStore,
+    TokenCounter,
+    MemoryExtractor,
 )
 ```
 
@@ -24,10 +34,12 @@ from datetime import datetime
 from enum import StrEnum
 from pydantic import BaseModel, Field
 
+
 class MemoryState(StrEnum):
     ACTIVE = "active"
     SUPERSEDED = "superseded"
     INVALIDATED = "invalidated"
+
 
 class MemoryKind(StrEnum):
     DECISION = "decision"
@@ -36,10 +48,12 @@ class MemoryKind(StrEnum):
     OPEN_QUESTION = "open_question"
     TASK_SUMMARY = "task_summary"
 
+
 class Visibility(StrEnum):
     PRIVATE = "private"
-    TEAM = "team"      # requires verified grants, not just a string
-    ORG = "org"        # disabled by default
+    TEAM = "team"  # requires verified grants, not just a string
+    ORG = "org"  # disabled by default
+
 
 class AccessScope(BaseModel):
     tenant_id: str = Field(min_length=1)
@@ -48,9 +62,11 @@ class AccessScope(BaseModel):
     principals: frozenset[str] = frozenset()
     allowed_source_ids: frozenset[str] | None = None
 
+
 class WorkstreamRef(BaseModel):
     external_id: str
     system: str | None = None  # e.g. ticketing system, no vendor dependency
+
 
 class SourceRef(BaseModel):
     provider: str
@@ -59,6 +75,7 @@ class SourceRef(BaseModel):
     version: str | None = None
     retrieved_at: datetime
     modified_at: datetime | None = None
+
 
 class Evidence(BaseModel):
     id: str
@@ -69,6 +86,7 @@ class Evidence(BaseModel):
     trust_label: str = "unverified"
     metadata: dict[str, str] = Field(default_factory=dict)
 
+
 class ContextRequest(BaseModel):
     query: str = Field(min_length=1)
     scope: AccessScope
@@ -77,12 +95,14 @@ class ContextRequest(BaseModel):
     max_items: int = Field(default=20, gt=0)
     provider_ids: list[str] | None = None
 
+
 class SelectedContext(BaseModel):
     evidence_id: str
     excerpt: str
     source: SourceRef
     reason: str
     estimated_tokens: int
+
 
 class ContextBundle(BaseModel):
     schema_version: str = "1"
@@ -102,6 +122,7 @@ MemoryRecord must include: `id`, `tenant_id`, `actor_id`, `visibility`, `workstr
 ```python
 from typing import Protocol, Sequence
 
+
 class ContextProvider(Protocol):
     @property
     def provider_id(self) -> str: ...
@@ -115,32 +136,39 @@ class ContextProvider(Protocol):
         limit: int,
     ) -> Sequence[Evidence]: ...
 
-class MemoryStore(Protocol):
-    async def create(
-        self, candidate: MemoryCandidate, *, scope: AccessScope
-    ) -> MemoryRecord: ...
 
-    async def get(
-        self, memory_id: str, *, scope: AccessScope
-    ) -> MemoryRecord | None: ...
+class MemoryStore(Protocol):
+    async def create(self, candidate: MemoryCandidate, *, scope: AccessScope) -> MemoryRecord: ...
+
+    async def get(self, memory_id: str, *, scope: AccessScope) -> MemoryRecord | None: ...
 
     async def search(
-        self, query: str, *, scope: AccessScope,
-        workstream: WorkstreamRef | None, limit: int
+        self, query: str, *, scope: AccessScope, workstream: WorkstreamRef | None, limit: int
     ) -> Sequence[MemoryRecord]: ...
 
     async def update(
-        self, memory_id: str, *, expected_revision: int,
-        scope: AccessScope, **changes: object,
+        self,
+        memory_id: str,
+        *,
+        expected_revision: int,
+        scope: AccessScope,
+        **changes: object,
     ) -> MemoryRecord: ...
 
     async def invalidate(
-        self, memory_id: str, *, scope: AccessScope,
-        expected_revision: int, reason: str,
+        self,
+        memory_id: str,
+        *,
+        scope: AccessScope,
+        expected_revision: int,
+        reason: str,
     ) -> MemoryRecord: ...
 
     async def delete(
-        self, memory_id: str, *, scope: AccessScope,
+        self,
+        memory_id: str,
+        *,
+        scope: AccessScope,
     ) -> None: ...
 ```
 
@@ -266,3 +294,4 @@ Minimum support: Python 3.11+, Ruff, pytest/pytest-asyncio, mypy or pyright, Pyd
 Session 1: in a synthetic workstream, record an attempted API route, failure evidence, verified alternative and remaining question. Close and reconstruct a **new** ContextEngine instance with the same persistent SQLite store, but no previous chat transcript. Session 2: ask to continue. Expected: correct alternative, reason, source attribution and unresolved question; **not** stale failed choice. Repeat with another actor and ensure private memory is invisible.
 
 See [DESIGN.md](DESIGN.md) for non-functional requirements and [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) for milestones.
+
