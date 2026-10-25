@@ -1,5 +1,6 @@
 """EI Context: scoped evidence retrieval and persistent work memory."""
 
+from ei_context.engine import ContextEngine
 from ei_context.memory import MemoryManager, SQLiteMemoryStore
 from ei_context.models import (
     AccessScope,
@@ -24,6 +25,7 @@ __all__ = [
     "AccessPolicy",
     "AccessScope",
     "ApprovalEvidence",
+    "ContextEngine",
     "ContextBundle",
     "ContextRequest",
     "Evidence",

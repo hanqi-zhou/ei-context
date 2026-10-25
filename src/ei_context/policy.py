@@ -48,7 +48,11 @@ class AccessPolicy:
 
     def evidence_allowed(self, evidence: Evidence, scope: AccessScope) -> bool:
         scope = self.validate_scope(scope)
-        refs = evidence.source_refs or (evidence.source,)
+        refs = (
+            evidence.source_refs
+            if evidence.source.provider == "memory" and evidence.memory_kind is not None
+            else (evidence.source, *evidence.source_refs)
+        )
         return (
             evidence.tenant_id == scope.tenant_id
             and evidence.namespace in scope.allowed_namespaces
