@@ -42,8 +42,9 @@ class AccessPolicy:
         )
 
     def sources_allowed(self, refs: tuple[SourceRef, ...], scope: AccessScope) -> bool:
-        return scope.allowed_source_ids is None or all(
-            ref.source_id in scope.allowed_source_ids for ref in refs
+        scope = self.validate_scope(scope)
+        return scope.allowed_sources is None or all(
+            ref.identity in scope.allowed_sources for ref in refs
         )
 
     def evidence_allowed(self, evidence: Evidence, scope: AccessScope) -> bool:
@@ -83,7 +84,10 @@ class AccessPolicy:
             or candidate.visibility == Visibility.ORG
             or (
                 candidate.visibility == Visibility.TEAM
-                and candidate.team_principal not in self.grants(scope)
+                and (
+                    candidate.team_principal not in self.grants(scope)
+                    or not (candidate.team_principal or "").startswith("team:")
+                )
             )
         ):
             raise AccessDenied("memory write is not authorised")

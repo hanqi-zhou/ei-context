@@ -34,7 +34,7 @@ async def test_defence_in_depth_before_ranker_and_no_cache(scope, ref):
     assert seen == ["ledger"]
     assert "PRIVATE CONTENT" not in str(bundle)
     seen.clear()
-    narrow = scope.model_copy(update={"allowed_source_ids": frozenset()})
+    narrow = scope.model_copy(update={"allowed_sources": frozenset()})
     empty = await engine.refresh(ContextRequest(query="ledger", scope=narrow), bundle)
     assert seen == [] and empty.selected == ()
     bob = AccessScope(tenant_id="demo", actor_id="bob")
@@ -84,7 +84,7 @@ async def test_primary_source_cannot_be_laundered_through_supporting_ref(scope, 
         tenant_id="demo",
         access_principals={"actor:alice"},
     )
-    narrow = scope.model_copy(update={"allowed_source_ids": frozenset({ref.source_id})})
+    narrow = scope.model_copy(update={"allowed_sources": frozenset({ref.identity})})
     result = await ContextEngine([InMemoryProvider("docs", [e])]).prepare(
         ContextRequest(query="ledger", scope=narrow)
     )

@@ -36,13 +36,23 @@ class Visibility(StrEnum):
     ORG = "org"
 
 
+class SourceIdentity(Model):
+    """An exact provider/source pair; never split or join delimiter-based identifiers."""
+
+    provider: Identifier
+    source_id: Identifier
+
+
 class AccessScope(Model):
     """Authenticated host identity; principals are hints, never verified grants."""
 
+    schema_version: Literal["2"] = "2"
     tenant_id: Identifier
     actor_id: Identifier
     principals: frozenset[Identifier] = frozenset()
-    allowed_source_ids: frozenset[Identifier] | None = None
+    allowed_sources: frozenset[SourceIdentity] | None = None
+    # Retained as null-only to reject stale model_copy/model_construct restrictions too.
+    allowed_source_ids: None = Field(default=None, exclude=True)
     allowed_namespaces: frozenset[Identifier] = frozenset({"work"})
 
     @field_validator("allowed_namespaces")
@@ -66,6 +76,10 @@ class SourceRef(Model):
     retrieved_at: AwareDatetime
     modified_at: AwareDatetime | None = None
     valid_until: AwareDatetime | None = None
+
+    @property
+    def identity(self) -> SourceIdentity:
+        return SourceIdentity(provider=self.provider, source_id=self.source_id)
 
 
 class Evidence(Model):
@@ -151,6 +165,10 @@ class MemoryCandidate(Model):
     def team_requires_principal(self) -> "MemoryCandidate":
         if (self.visibility == Visibility.TEAM) != (self.team_principal is not None):
             raise ValueError("team visibility requires exactly one team principal")
+        if self.team_principal is not None and (
+            not self.team_principal.startswith("team:") or self.team_principal == "team:"
+        ):
+            raise ValueError("team principal must identify a named team")
         return self
 
 

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.0 — Provider-qualified authorisation and event lineage (not published)
+
+- AccessScope schema 2 with typed SourceIdentity allowlists; legacy bare restrictions fail closed.
+- Atomic SQLite schema v1→v2 migration restores provider identity from all revisions.
+- Extracted/explicit nested proposals must cite exact authorised source-event snapshots.
+- Source validity/modified/URI metadata participates in duplicate detection; retrieval time alone does not.
+- Actor principals cannot masquerade as team grants. New collision/migration/lineage regressions.
+- Remains independent of EI Learning, EI Core and EI Server.
+
+
 ## 0.1.0 — Initial implementation (2026-10-25; not published)
 
 - Independent Python package, typed Pydantic models, async provider/store contracts.

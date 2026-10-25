@@ -91,23 +91,34 @@ class MemoryManager:
             or not self.policy.sources_allowed(event.source_refs, scope)
         ):
             raise AccessDenied("event is outside authenticated scope")
+        event_snapshots = {ref.model_dump_json() for ref in event.source_refs}
+
+        def validate_lineage(candidate: MemoryCandidate) -> None:
+            self.policy.require_write(candidate, scope)
+            if any(ref.model_dump_json() not in event_snapshots for ref in candidate.source_refs):
+                raise InvalidMemory("proposal provenance must be observed in its source event")
+
         if event.proposal is not None:
-            self.policy.require_write(event.proposal, scope)
+            validate_lineage(event.proposal)
         proposed = await self.extractor.extract(event, scope=scope)
         if len(proposed) > 100:
             raise InvalidMemory("extractor candidate limit exceeded")
         candidates = []
         for raw in proposed:
             candidate = MemoryCandidate.model_validate(raw)
-            self.policy.require_write(candidate, scope)
+            validate_lineage(candidate)
             if (
                 candidate.visibility != Visibility.PRIVATE
                 or candidate.namespace != event.namespace
                 or candidate.workstream != event.workstream
             ):
                 raise InvalidMemory("extracted proposals must preserve private event scope")
-            if event.kind == "user_confirmed_decision" and candidate.kind.value != "decision":
-                raise InvalidMemory("confirmed decision event requires a decision proposal")
+            expected_kind = {
+                "user_confirmed_decision": "decision",
+                "user_confirmed_finding": "finding",
+            }.get(event.kind)
+            if expected_kind is not None and candidate.kind.value != expected_kind:
+                raise InvalidMemory("confirmed event and proposed memory kind must match")
             candidates.append(candidate.model_copy(update={"source_event": event.id}))
         return candidates
 

@@ -180,3 +180,39 @@ protocols; actual EI package APIs remain unavailable and are not assumed.
 
 Five focused PRs are stacked in implementation order. Merge bottom-up, retargeting
 the next PR to `main` after each merge. No merge or deployment happens automatically.
+
+
+## v0.2 security update and Learning boundary
+
+Restricted scopes now use provider-qualified identities:
+
+```python
+from ei_context import AccessScope, SourceIdentity
+
+scope = AccessScope(
+    tenant_id="demo",
+    actor_id="alice",
+    allowed_sources=frozenset(
+        {
+            SourceIdentity(provider="fixture-docs", source_id="ledger-doc"),
+        }
+    ),
+)
+```
+
+Bare non-null `allowed_source_ids` are rejected, including at model-copy trust
+boundaries. Unrestricted legacy scopes with that field set to null remain accepted.
+SQLite schema v1 migrates atomically to v2, reconstructing every revision's qualified
+source index from original stored SourceRef snapshots. Back up local data before
+upgrading; older library versions deliberately cannot open schema v2.
+
+Event-derived proposals must cite an exact subset of their authorised event's
+source snapshots, before any optional extractor receives a nested proposal and
+again before candidates are returned. Source changes need a separately observed
+source event. Learned advice is never automatically approved technical truth.
+See [migration and security evidence](docs/QUALIFIED_SOURCES.md).
+
+EI Learning owns the one coding-task evaluation harness. EI Context supplies scoped
+public evidence APIs and remains independent. The next shared test is accepted code
+on held-out tasks with matched stateless, strong handoff, memory and learned-strategy
+conditions. Higher recall alone is not proof that an agent learns or improves.

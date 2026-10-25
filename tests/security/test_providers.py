@@ -19,7 +19,7 @@ async def test_all_paths_enforce_actor_tenant_source_namespace(scope):
     for blocked in [
         AccessScope(tenant_id="demo", actor_id="bob", principals=frozenset({"actor:alice"})),
         AccessScope(tenant_id="other", actor_id="alice"),
-        scope.model_copy(update={"allowed_source_ids": frozenset()}),
+        scope.model_copy(update={"allowed_sources": frozenset()}),
         scope.model_copy(update={"allowed_namespaces": frozenset({"elsewhere"})}),
     ]:
         assert await provider.search("ledger", scope=blocked, workstream=None, limit=5) == ()
