@@ -89,3 +89,19 @@ async def test_primary_source_cannot_be_laundered_through_supporting_ref(scope, 
         ContextRequest(query="ledger", scope=narrow)
     )
     assert result.selected == ()
+
+
+async def test_grant_revocation_rechecks_on_refresh(scope, ref):
+    from ei_context import AccessPolicy
+
+    grants = {"alice": frozenset({"team:dev"})}
+    policy = AccessPolicy(lambda tenant, actor: grants.get(actor, frozenset()))
+    e = Evidence(
+        id="team", text="ledger", source=ref, tenant_id="demo", access_principals={"team:dev"}
+    )
+    engine = ContextEngine([InMemoryProvider("docs", [e], policy=policy)], policy=policy)
+    request = ContextRequest(query="ledger", scope=scope)
+    first = await engine.prepare(request)
+    assert len(first.selected) == 1
+    grants.clear()
+    assert (await engine.refresh(request, first)).selected == ()

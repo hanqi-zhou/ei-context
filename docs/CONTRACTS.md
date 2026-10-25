@@ -1,6 +1,8 @@
 # EI Context — Proposed Python Contracts (v0.1)
 
-**Status:** implementation target, not existing code. All examples are illustrative. Keep contract churn explicit in CHANGELOG/ADRs.
+**Status:** v0.1 implemented (2026-10-25). The proposed shapes below describe the original intent.
+See the [public models](../src/ei_context/models.py), [protocols](../src/ei_context/protocols.py),
+[adapter guide](ADAPTER_GUIDE.md) and [changelog](../CHANGELOG.md) for concrete refinements.
 
 ## 1. Public import surface
 

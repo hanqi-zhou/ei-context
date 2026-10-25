@@ -141,3 +141,23 @@ async def test_lock_contention_and_future_schema(tmp_path, scope, candidate, app
         db.execute("PRAGMA user_version=999")
     with pytest.raises(StoreUnavailable):
         SQLiteMemoryStore(path)
+
+
+async def test_transaction_rollback_removes_partial_record(
+    tmp_path, scope, candidate, approval, now
+):
+    path = tmp_path / "rollback.sqlite"
+    store = SQLiteMemoryStore(path, clock=lambda: now)
+    with sqlite3.connect(path) as db:
+        db.execute(
+            "CREATE TRIGGER fail_source BEFORE INSERT ON source_index "
+            "BEGIN SELECT RAISE(ABORT, 'synthetic failure'); END"
+        )
+    with pytest.raises(StoreUnavailable):
+        await store.create(candidate, scope=scope, approval=approval)
+    assert await store.list(scope=scope, include_inactive=True) == ()
+    with sqlite3.connect(path) as db:
+        assert db.execute("SELECT count(*) FROM revisions").fetchone()[0] == 0
+        db.execute("DROP TRIGGER fail_source")
+    assert await store.create(candidate, scope=scope, approval=approval)
+    await store.close()

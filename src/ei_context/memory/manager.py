@@ -1,11 +1,16 @@
 """Explicit memory approval and lifecycle facade; no model calls or automatic publication."""
 
+from collections.abc import Sequence
+
+from ei_context.errors import AccessDenied, InvalidMemory
+from ei_context.lifecycle.events import ContextEvent, ExplicitOnlyExtractor, MemoryExtractor
 from ei_context.models import (
     AccessScope,
     ApprovalEvidence,
     MemoryCandidate,
     MemoryRecord,
     MemoryUpdate,
+    Visibility,
     WorkstreamRef,
 )
 from ei_context.policy import AccessPolicy
@@ -15,9 +20,16 @@ from ei_context.protocols import MemoryStore
 class MemoryManager:
     """Caller attests provenance through ApprovalEvidence. No implicit technical verification."""
 
-    def __init__(self, store: MemoryStore, *, policy: AccessPolicy | None = None) -> None:
+    def __init__(
+        self,
+        store: MemoryStore,
+        *,
+        policy: AccessPolicy | None = None,
+        extractor: MemoryExtractor | None = None,
+    ) -> None:
         self.store = store
         self.policy = policy or AccessPolicy()
+        self.extractor = extractor or ExplicitOnlyExtractor()
 
     async def commit(
         self, candidate: MemoryCandidate, *, scope: AccessScope, approval: ApprovalEvidence
@@ -65,3 +77,48 @@ class MemoryManager:
 
     async def delete(self, memory_id: str, *, scope: AccessScope) -> None:
         await self.store.delete(memory_id, scope=scope)
+
+    async def propose_from_event(
+        self, event: ContextEvent, *, scope: AccessScope
+    ) -> list[MemoryCandidate]:
+        """Stage candidates in caller memory only; filter before optional external extraction."""
+        scope = self.policy.validate_scope(scope)
+        event = ContextEvent.model_validate(event)
+        if (
+            event.tenant_id != scope.tenant_id
+            or event.actor_id != scope.actor_id
+            or event.namespace not in scope.allowed_namespaces
+            or not self.policy.sources_allowed(event.source_refs, scope)
+        ):
+            raise AccessDenied("event is outside authenticated scope")
+        if event.proposal is not None:
+            self.policy.require_write(event.proposal, scope)
+        proposed = await self.extractor.extract(event, scope=scope)
+        if len(proposed) > 100:
+            raise InvalidMemory("extractor candidate limit exceeded")
+        candidates = []
+        for raw in proposed:
+            candidate = MemoryCandidate.model_validate(raw)
+            self.policy.require_write(candidate, scope)
+            if (
+                candidate.visibility != Visibility.PRIVATE
+                or candidate.namespace != event.namespace
+                or candidate.workstream != event.workstream
+            ):
+                raise InvalidMemory("extracted proposals must preserve private event scope")
+            if event.kind == "user_confirmed_decision" and candidate.kind.value != "decision":
+                raise InvalidMemory("confirmed decision event requires a decision proposal")
+            candidates.append(candidate.model_copy(update={"source_event": event.id}))
+        return candidates
+
+    async def distill(
+        self, events: Sequence[ContextEvent], *, scope: AccessScope
+    ) -> list[MemoryCandidate]:
+        """Stage explicit observable outcomes, without saving events or scheduling runs."""
+        self.policy.validate_scope(scope)
+        if len(events) > 1000:
+            raise InvalidMemory("event batch limit exceeded")
+        candidates: list[MemoryCandidate] = []
+        for event in events:
+            candidates.extend(await self.propose_from_event(event, scope=scope))
+        return candidates

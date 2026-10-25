@@ -1,16 +1,24 @@
 """Bounded retrieval coordination, never an agent/model/tool loop."""
 
 import asyncio
+import math
 from collections.abc import Callable, Sequence
 from datetime import datetime
 
 from pydantic import ValidationError
 
+from ei_context.errors import InvalidMemory
+from ei_context.lifecycle.events import ContextEvent
+from ei_context.memory.manager import MemoryManager
 from ei_context.models import (
+    AccessScope,
+    ApprovalEvidence,
     ContextBundle,
     ContextRequest,
     Evidence,
+    MemoryCandidate,
     MemoryKind,
+    MemoryRecord,
     MemoryState,
     utc_now,
 )
@@ -40,6 +48,7 @@ class ContextEngine:
         max_concurrency: int = 4,
         provider_timeout: float = 2.0,
         provider_limit: int = 100,
+        memory_manager: MemoryManager | None = None,
     ) -> None:
         if not 1 <= max_concurrency <= 32 or not 0 < provider_timeout <= 60:
             raise ValueError("invalid concurrency or timeout")
@@ -49,6 +58,7 @@ class ContextEngine:
         if len(set(ids)) != len(ids):
             raise ValueError("provider IDs must be unique")
         self.providers = tuple(providers)
+        self.memory_manager = memory_manager
         self.policy = policy or AccessPolicy()
         self.counter = token_counter or ApproximateTokenCounter()
         self.ranker = ranker or LexicalRanker(clock=clock)
@@ -134,6 +144,8 @@ class ContextEngine:
         for item, score, reason in ranked:
             if item.id not in originals or item.id in seen or item != originals[item.id]:
                 raise ValueError("ranker must return only unchanged authorised evidence")
+            if not math.isfinite(score):
+                raise ValueError("ranker scores must be finite")
             seen.add(item.id)
             notes = caveats.get(item.id, ())
             # Explicit stale/mismatched provenance loses priority to current source evidence.
@@ -177,8 +189,10 @@ class ContextEngine:
                 notes.append("unverified source statement")
             if e.source.version is None:
                 notes.append("source version unknown")
-            expiry = e.valid_until or e.source.valid_until
-            if expiry is not None and expiry <= now:
+            if any(
+                expiry is not None and expiry <= now
+                for expiry in (e.valid_until, e.source.valid_until)
+            ):
                 notes.append("expired evidence; historical context only")
             if e.memory_status is not None and e.memory_status != MemoryState.ACTIVE:
                 notes.append("inactive memory; historical context only")
@@ -197,6 +211,18 @@ class ContextEngine:
                             "supporting source version differs; "
                             "review memory against current evidence"
                         )
+                    matching = [s for s in current if s.source.version == ref.version]
+                    if matching and any(
+                        old.source.modified_at is not None
+                        and other.source.modified_at is not None
+                        and other.source.modified_at > old.source.modified_at
+                        and other.source.version != old.source.version
+                        for old in matching
+                        for other in current
+                    ):
+                        notes.append(
+                            "supporting source version differs from latest snapshot; review memory"
+                        )
                     if ref.valid_until is not None and ref.valid_until <= now:
                         notes.append("supporting evidence expired; review memory")
             else:
@@ -210,12 +236,17 @@ class ContextEngine:
                         notes.append("older source snapshot; prefer current evidence")
                     else:
                         notes.append("multiple source versions; verify authoritative version")
-            if e.memory_kind == MemoryKind.DECISION and any(
-                other.id != e.id
-                and other.memory_kind == MemoryKind.DECISION
-                and other.workstream == e.workstream
-                and other.text != e.text
-                for other in evidence
+            if (
+                e.memory_kind == MemoryKind.DECISION
+                and e.memory_status == MemoryState.ACTIVE
+                and any(
+                    other.id != e.id
+                    and other.memory_kind == MemoryKind.DECISION
+                    and other.memory_status == MemoryState.ACTIVE
+                    and other.workstream == e.workstream
+                    and other.text != e.text
+                    for other in evidence
+                )
             ):
                 notes.append("multiple active decision statements; review potential conflict")
             result[e.id] = tuple(sorted(set(notes)))
@@ -226,3 +257,28 @@ class ContextEngine:
     ) -> ContextBundle:
         """Recompute with current permissions; previous bundles confer no access or cache rights."""
         return await self.prepare(request)
+
+    async def observe(self, event: ContextEvent, *, scope: AccessScope) -> list[MemoryCandidate]:
+        """Propose only; never persist on a tool result or model guess."""
+        if self.memory_manager is None:
+            raise InvalidMemory("a memory manager is required for lifecycle operations")
+        return await self.memory_manager.propose_from_event(event, scope=scope)
+
+    async def distill(
+        self, events: Sequence[ContextEvent], *, scope: AccessScope
+    ) -> list[MemoryCandidate]:
+        if self.memory_manager is None:
+            raise InvalidMemory("a memory manager is required for lifecycle operations")
+        return await self.memory_manager.distill(events, scope=scope)
+
+    async def commit_memory(
+        self, candidate: MemoryCandidate, *, scope: AccessScope, approval: ApprovalEvidence
+    ) -> MemoryRecord:
+        if self.memory_manager is None:
+            raise InvalidMemory("a memory manager is required for lifecycle operations")
+        return await self.memory_manager.commit(candidate, scope=scope, approval=approval)
+
+    async def close(self) -> None:
+        """Close the explicitly attached memory manager's store; providers remain host-owned."""
+        if self.memory_manager is not None:
+            await self.memory_manager.store.close()
