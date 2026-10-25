@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=69,<85"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ei-context"
+version = "0.1.0"
+description = "Scoped, evidence-backed context and offline work memory"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = ["pydantic>=2.7,<3"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<10", "pytest-asyncio>=0.24,<2", "ruff>=0.9,<1", "mypy>=1.14,<3", "build>=1.2,<2"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+ei_context = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "ASYNC"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+files = ["src/ei_context"]
+plugins = ["pydantic.mypy"]
