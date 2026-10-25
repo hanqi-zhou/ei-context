@@ -19,6 +19,7 @@ async def test_explicit_events_staged_until_approval(tmp_path, scope, candidate,
         actor_id="alice",
         occurred_at=now,
         proposal=candidate,
+        source_refs=candidate.source_refs,
     )
     proposed = await engine.observe(event, scope=scope)
     assert len(proposed) == 1 and proposed[0].status == "pending"
@@ -61,7 +62,7 @@ async def test_filter_before_optional_extractor(tmp_path, scope, ref, now):
         await manager.propose_from_event(event, scope=scope)
     assert calls == []
     event = event.model_copy(update={"tenant_id": "demo"})
-    narrow = scope.model_copy(update={"allowed_source_ids": frozenset()})
+    narrow = scope.model_copy(update={"allowed_sources": frozenset()})
     with pytest.raises(AccessDenied):
         await manager.propose_from_event(event, scope=narrow)
     assert calls == []

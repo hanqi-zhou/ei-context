@@ -12,7 +12,7 @@ async def test_private_access_all_paths(tmp_path, scope, candidate, approval, no
     for denied in [
         AccessScope(tenant_id="demo", actor_id="bob", principals={"actor:alice"}),
         AccessScope(tenant_id="other", actor_id="alice"),
-        scope.model_copy(update={"allowed_source_ids": frozenset()}),
+        scope.model_copy(update={"allowed_sources": frozenset()}),
         scope.model_copy(update={"allowed_namespaces": frozenset({"other"})}),
     ]:
         assert await store.get(r.id, scope=denied) is None
@@ -84,7 +84,7 @@ async def test_old_revision_source_restrictions(tmp_path, scope, candidate, appr
         scope=scope,
         approval=approval,
     )
-    narrow = scope.model_copy(update={"allowed_source_ids": frozenset({"public-ref"})})
+    narrow = scope.model_copy(update={"allowed_sources": frozenset({new_ref.identity})})
     assert [h.revision for h in await store.history(r.id, scope=narrow)] == [2]
     await store.close()
 

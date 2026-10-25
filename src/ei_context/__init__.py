@@ -15,13 +15,14 @@ from ei_context.models import (
     MemoryState,
     MemoryUpdate,
     SelectedContext,
+    SourceIdentity,
     SourceRef,
     Visibility,
     WorkstreamRef,
 )
 from ei_context.policy import AccessPolicy
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __all__ = [
     "AccessPolicy",
     "AccessScope",
@@ -40,6 +41,7 @@ __all__ = [
     "MemoryUpdate",
     "SelectedContext",
     "SourceRef",
+    "SourceIdentity",
     "Visibility",
     "WorkstreamRef",
 ]

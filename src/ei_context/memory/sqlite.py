@@ -84,9 +84,12 @@ class SQLiteMemoryStore:
     def _migrate(self) -> None:
         with self._transaction():
             version = self._db.execute("PRAGMA user_version").fetchone()[0]
-            if version not in (0, 1):
+            if version not in (0, 1, 2):
                 raise StoreUnavailable("unsupported memory schema version")
+            if version == 2:
+                return
             if version == 1:
+                self._migrate_source_index()
                 return
             statements = [
                 """CREATE TABLE memories (
@@ -103,14 +106,43 @@ class SQLiteMemoryStore:
                     PRIMARY KEY(memory_id,revision))""",
                 """CREATE TABLE source_index (
                     memory_id TEXT NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
-                    revision INTEGER NOT NULL, source_id TEXT NOT NULL,
-                    PRIMARY KEY(memory_id,revision,source_id))""",
-                "CREATE INDEX source_lookup ON source_index(source_id,memory_id,revision)",
+                    revision INTEGER NOT NULL, provider TEXT NOT NULL, source_id TEXT NOT NULL,
+                    PRIMARY KEY(memory_id,revision,provider,source_id))""",
+                "CREATE INDEX source_lookup ON source_index(provider,source_id,memory_id,revision)",
                 "CREATE INDEX duplicate_lookup ON memories(tenant_id,actor_id,fingerprint,status)",
-                "PRAGMA user_version=1",
+                "PRAGMA user_version=2",
             ]
             for statement in statements:
                 self._db.execute(statement)
+
+    def _migrate_source_index(self) -> None:
+        """Atomic v1 -> v2 rebuild from original revision snapshots, never guessed IDs."""
+        self._db.execute("ALTER TABLE source_index RENAME TO source_index_v1")
+        self._db.execute("DROP INDEX source_lookup")
+        self._db.execute("""CREATE TABLE source_index (
+            memory_id TEXT NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
+            revision INTEGER NOT NULL, provider TEXT NOT NULL, source_id TEXT NOT NULL,
+            PRIMARY KEY(memory_id,revision,provider,source_id))""")
+        for row in self._db.execute("SELECT body FROM revisions").fetchall():
+            record = MemoryRecord.model_validate_json(row[0])
+            self._db.executemany(
+                "INSERT OR IGNORE INTO source_index VALUES (?,?,?,?)",
+                [
+                    (record.id, record.revision, ref.provider, ref.source_id)
+                    for ref in record.source_refs
+                ],
+            )
+        for row in self._db.execute("SELECT body FROM memories").fetchall():
+            record = MemoryRecord.model_validate_json(row[0])
+            self._db.execute(
+                "UPDATE memories SET fingerprint=? WHERE id=?",
+                (self._fingerprint(self._as_candidate(record)), record.id),
+            )
+        self._db.execute("DROP TABLE source_index_v1")
+        self._db.execute(
+            "CREATE INDEX source_lookup ON source_index(provider,source_id,memory_id,revision)"
+        )
+        self._db.execute("PRAGMA user_version=2")
 
     def _probe_fts(self) -> bool:
         try:
@@ -123,18 +155,26 @@ class SQLiteMemoryStore:
     def _acl(self, scope: AccessScope, *, revision: str = "m.revision") -> tuple[str, list[str]]:
         scope = self.policy.validate_scope(scope)
         namespaces = sorted(scope.allowed_namespaces)
-        grants = sorted(self.policy.grants(scope))
+        grants = sorted(g for g in self.policy.grants(scope) if g.startswith("team:"))
         sql = f"""m.tenant_id=? AND m.namespace IN ({",".join("?" for _ in namespaces)})
             AND ((m.visibility='private' AND m.actor_id=?) OR
             (m.visibility='team' AND m.team_principal IN ({",".join("?" for _ in grants)})))"""
         args = [scope.tenant_id, *namespaces, scope.actor_id, *grants]
-        if scope.allowed_source_ids is not None:
-            allowed = sorted(scope.allowed_source_ids)
-            # Empty allowlist denies every record with supporting references.
-            clause = f"s.source_id NOT IN ({','.join('?' for _ in allowed)})" if allowed else "1=1"
+        if scope.allowed_sources is not None:
+            allowed = sorted(
+                scope.allowed_sources, key=lambda identity: (identity.provider, identity.source_id)
+            )
+            # Every original reference must match an exact provider/source pair.
+            clause = (
+                "NOT (" + " OR ".join("(s.provider=? AND s.source_id=?)" for _ in allowed) + ")"
+                if allowed
+                else "1=1"
+            )
             sql += f""" AND NOT EXISTS (SELECT 1 FROM source_index s
                 WHERE s.memory_id=m.id AND s.revision={revision} AND {clause})"""
-            args.extend(allowed)
+            args.extend(
+                value for identity in allowed for value in (identity.provider, identity.source_id)
+            )
         return sql, args
 
     def _get(self, memory_id: str, scope: AccessScope) -> MemoryRecord | None:
@@ -174,8 +214,10 @@ class SQLiteMemoryStore:
     @staticmethod
     def _fingerprint(candidate: MemoryCandidate) -> str:
         data = candidate.model_dump(mode="json", exclude={"source_event", "uncertainty", "status"})
+        # Retrieval time alone is not a content change; validity, modification and
+        # URI changes are material and must not revive an older duplicate.
         data["source_refs"] = sorted(
-            (r.provider, r.source_id, r.version or "") for r in candidate.source_refs
+            r.model_dump_json(exclude={"retrieved_at"}) for r in candidate.source_refs
         )
         return hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()
 
@@ -215,8 +257,8 @@ class SQLiteMemoryStore:
             )
         self._db.execute("INSERT INTO revisions VALUES (?,?,?)", (record.id, record.revision, body))
         self._db.executemany(
-            "INSERT OR IGNORE INTO source_index VALUES (?,?,?)",
-            [(record.id, record.revision, r.source_id) for r in record.source_refs],
+            "INSERT OR IGNORE INTO source_index VALUES (?,?,?,?)",
+            [(record.id, record.revision, r.provider, r.source_id) for r in record.source_refs],
         )
 
     @staticmethod
@@ -277,7 +319,7 @@ class SQLiteMemoryStore:
     async def export(self, *, scope: AccessScope) -> str:
         return json.dumps(
             {
-                "schema_version": "1",
+                "schema_version": "2",
                 "records": [
                     r.model_dump(mode="json")
                     for r in await self.list(scope=scope, include_inactive=True)
