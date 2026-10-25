@@ -155,6 +155,7 @@ async def test_provider_selection_exclusion_limits_and_expired_memory(scope, ref
             "id": "inactive",
             "memory_kind": MemoryKind.DECISION,
             "memory_status": MemoryState.INVALIDATED,
+            "source_refs": (ref,),
         }
     )
     result = await ContextEngine(
@@ -162,3 +163,52 @@ async def test_provider_selection_exclusion_limits_and_expired_memory(scope, ref
     ).prepare(ContextRequest(query="ledger", scope=scope, token_budget=8000))
     assert result.selected[0].evidence_id == "doc"
     assert any("inactive" in note for note in result.warnings)
+
+
+async def test_memory_mismatch_conflict_and_supersession(
+    tmp_path, scope, candidate, approval, ref, now
+):
+    from ei_context import MemoryKind, SQLiteMemoryStore, WorkstreamRef
+    from ei_context.providers.memory import MemoryProvider
+
+    store = SQLiteMemoryStore(tmp_path / "conflict.sqlite", clock=lambda: now)
+    work = WorkstreamRef(external_id="DEMO-42")
+    first = await store.create(
+        candidate.model_copy(update={"workstream": work}), scope=scope, approval=approval
+    )
+    second = await store.create(
+        candidate.model_copy(
+            update={"content": "Choose LegacyRoute for ledger", "workstream": work}
+        ),
+        scope=scope,
+        approval=approval,
+    )
+    old_doc = document(ref.model_copy(update={"modified_at": now - timedelta(days=1)}))
+    current_doc = old_doc.model_copy(
+        update={
+            "id": "current",
+            "source": ref.model_copy(update={"version": "2", "modified_at": now}),
+        }
+    )
+    engine = ContextEngine(
+        [InMemoryProvider("docs", [old_doc, current_doc]), MemoryProvider(store)], clock=lambda: now
+    )
+    request = ContextRequest(query="ledger", scope=scope, workstream=work, token_budget=16000)
+    result = await engine.prepare(request)
+    assert any("potential conflict" in w for w in result.warnings)
+    assert any("latest snapshot" in w for w in result.warnings)
+    assert len([s for s in result.selected if s.memory_kind == MemoryKind.DECISION]) == 2
+    await store.supersede(second.id, first.id, expected_revision=1, scope=scope)
+    refreshed = await engine.refresh(request, result)
+    assert not any("potential conflict" in w for w in refreshed.warnings)
+    assert len([s for s in refreshed.selected if s.memory_kind == MemoryKind.DECISION]) == 1
+    await store.close()
+
+
+async def test_expiry_uses_source_and_evidence_limits(scope, ref, now):
+    source = ref.model_copy(update={"valid_until": now - timedelta(seconds=1)})
+    item = document(source, valid_until=now + timedelta(days=1))
+    result = await ContextEngine([InMemoryProvider("docs", [item])], clock=lambda: now).prepare(
+        ContextRequest(query="ledger", scope=scope)
+    )
+    assert any("expired" in note for note in result.warnings)

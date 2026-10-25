@@ -47,6 +47,7 @@ class SQLiteMemoryStore:
         self._db.row_factory = sqlite3.Row
         self._db.execute("PRAGMA foreign_keys=ON")
         self._db.execute("PRAGMA secure_delete=ON")
+        self._db.execute("PRAGMA temp_store=MEMORY")
         try:
             self._migrate()
             self.fts_available = use_fts and self._probe_fts()
@@ -161,6 +162,8 @@ class SQLiteMemoryStore:
         self.policy.require_write(candidate, scope)
         if approval.actor_id != scope.actor_id:
             raise AccessDenied("approval actor does not match authenticated actor")
+        if candidate.sensitivity == "sensitive" and not approval.allow_sensitive:
+            raise AccessDenied("sensitive memory requires explicit approval")
         if candidate.visibility != Visibility.PRIVATE and not approval.allow_publication:
             raise AccessDenied("shared memory requires explicit publication approval")
         if candidate.valid_until is not None and candidate.valid_until <= self._now():

@@ -3,6 +3,7 @@
 from collections.abc import Sequence
 from typing import Protocol
 
+from ei_context.lifecycle.events import MemoryExtractor as MemoryExtractor
 from ei_context.models import (
     AccessScope,
     ApprovalEvidence,

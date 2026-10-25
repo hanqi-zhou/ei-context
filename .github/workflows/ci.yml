@@ -18,3 +18,7 @@ jobs:
       - run: python -m ruff check .
       - run: python -m mypy
       - run: python -m build
+      - run: python examples/offline_resume.py
+      - run: python examples/adapters.py
+      - run: python scripts/evaluate.py
+      - run: python scripts/evaluate_memory.py

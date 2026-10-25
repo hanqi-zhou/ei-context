@@ -83,6 +83,14 @@ class Evidence(Model):
     valid_until: AwareDatetime | None = None
     metadata: dict[str, str] = Field(default_factory=dict)
 
+    @model_validator(mode="after")
+    def memory_needs_provenance(self) -> "Evidence":
+        if self.memory_kind is not None and not self.source_refs:
+            raise ValueError("memory evidence requires original supporting references")
+        if self.memory_status is not None and self.memory_kind is None:
+            raise ValueError("memory status requires a memory kind")
+        return self
+
 
 class ContextRequest(Model):
     query: Annotated[str, Field(min_length=1, max_length=10_000)]
@@ -154,6 +162,7 @@ class ApprovalEvidence(Model):
     reference: Identifier
     approved_at: AwareDatetime
     allow_publication: bool = False
+    allow_sensitive: bool = False
 
 
 class MemoryRecord(Model):
